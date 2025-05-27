@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './users/users.module';
+// import { EmailModule } from './email/email.module';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 @Module({
-  imports: [UsersModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    MongooseModule.forRoot(process.env.MONGODB_URI),
+    UsersModule,
+    // EmailModule,
+  ],
 })
 export class AppModule {}
