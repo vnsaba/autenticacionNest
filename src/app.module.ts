@@ -1,17 +1,16 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { JwtModule } from '@nestjs/jwt';
-import { UsersService } from './users/users.service';
-import { UsersController } from './users/users.controller';
-import { User, UserSchema } from './users/schemas/user.schema';
+import { UsersModule } from './users/users.module';
+// import { EmailModule } from './email/email.module';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-    JwtModule.register({}),
+    MongooseModule.forRoot(process.env.MONGODB_URI),
+    UsersModule,
+    // EmailModule,
   ],
-  providers: [UsersService],
-  controllers: [UsersController],
-  exports: [UsersService],
 })
-export class UsersModule {}
+export class AppModule {}
