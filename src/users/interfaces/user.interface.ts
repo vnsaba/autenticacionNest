@@ -38,7 +38,7 @@ export interface UserServiceInterface {
     refreshToken: RefreshTokenDto,
   ): Promise<{ accessToken: string; refreshToken: string }>;
 
-changePassword(changePasswordDto: ChangePasswordDto): Promise<void>;
+  changePassword(changePasswordDto: ChangePasswordDto): Promise<void>;
 
   verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<User>;
 }

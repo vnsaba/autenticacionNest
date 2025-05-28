@@ -20,7 +20,8 @@ export class EmailService {
     });
 
     this.appName = this.configService.get('APP_NAME') || 'Backend UAM';
-    this.appUrl = this.configService.get('APP_URL') || 'https://backend-uam.com';
+    this.appUrl =
+      this.configService.get('APP_URL') || 'https://backend-uam.com';
   }
 
   async sendVerificationEmail(
