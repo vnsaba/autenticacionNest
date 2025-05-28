@@ -45,21 +45,18 @@ export class UsersController {
     return this.usersService.login(loginDto);
   }
 
-  //- refresh-token
   @HttpCode(HttpStatus.OK)
   @Post('refresh-token')
   refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.usersService.refreshToken(refreshTokenDto);
   }
 
-  // - findAll
   @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.usersService.findAll();
   }
 
-  // - findOne
   @UseGuards(JwtAuthGuard)
   @Get(':id')
   findOne(@Param('id') id: string) {

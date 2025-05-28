@@ -73,7 +73,7 @@ export class UsersService {
 
     await this.emailService.sendVerificationEmail(
       createUserDto.email,
-      createUserDto.name,
+      createUserDto.firstName,
       verificationCode,
     );
 
