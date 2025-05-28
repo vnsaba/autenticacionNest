@@ -7,6 +7,7 @@ import { User, UserSchema } from './schemas/user.schema';
 import { PassportModule } from '@nestjs/passport';
 import { EmailModule } from 'src/email/email.module';
 import { ConfigModule } from '@nestjs/config';
+import { JwtStrategy } from './strategies/jwt.strategy'; // Importa la estrategia
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule,
     EmailModule,
   ],
-  providers: [UsersService],
+  providers: [UsersService, JwtStrategy],
   controllers: [UsersController],
   exports: [UsersService],
 })
