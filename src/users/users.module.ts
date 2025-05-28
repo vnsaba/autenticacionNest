@@ -6,12 +6,14 @@ import { UsersController } from './users.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { PassportModule } from '@nestjs/passport';
 import { EmailModule } from 'src/email/email.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     JwtModule.register({}),
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    ConfigModule,
     EmailModule,
   ],
   providers: [UsersService],
