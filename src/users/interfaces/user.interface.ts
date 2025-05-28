@@ -1,3 +1,5 @@
+import { VerifyEmailDto } from '../dto/user.dto';
+import { RefreshTokenDto } from '../dto/user.dto';
 import {
   ChangePasswordDto,
   CreateUserDto,
@@ -33,11 +35,10 @@ export interface UserServiceInterface {
   ): Promise<{ accessToken: string; refreshToken: string; user: User }>;
 
   refreshToken(
-    refreshToken: string,
+    refreshToken: RefreshTokenDto,
   ): Promise<{ accessToken: string; refreshToken: string }>;
 
-  changePassword(
-    id: string,
-    changePasswordDto: ChangePasswordDto,
-  ): Promise<void>;
+  changePassword(changePasswordDto: ChangePasswordDto): Promise<void>;
+
+  verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<User>;
 }

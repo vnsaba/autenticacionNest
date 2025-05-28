@@ -8,56 +8,26 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-
 import { User as SchemaUser, UserDocument } from './schemas/user.schema';
 import {
-  ChangePasswordDto,
   CreateUserDto,
   LoginDto,
-  RefreshTokenDto,
-  UpdateUserDto,
   VerifyEmailDto,
+  RefreshTokenDto,
 } from './dto/user.dto';
 import { EmailService } from '../email/email.service';
-import { User, UserServiceInterface } from './interfaces/user.interface';
+import { User } from './interfaces/user.interface';
+import { Model } from 'mongoose';
 
 @Injectable()
-export class UsersService implements UserServiceInterface {
+export class UsersService {
   constructor(
     @InjectModel(SchemaUser.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
   ) {}
-  findAll(): Promise<User[]> {
-    throw new Error('Method not implemented.');
-  }
-  findOne(id: string): Promise<User> {
-    throw new Error('Method not implemented.');
-  }
-  findByEmail(email: string): Promise<User> {
-    throw new Error('Method not implemented.');
-  }
-  update(id: string, updateUserDto: SchemaUser): Promise<User> {
-    throw new Error('Method not implemented.');
-  }
-  remove(id: string): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
-  verifyUser(id: string): Promise<User> {
-    throw new Error('Method not implemented.');
-  }
-  login(loginDto: SchemaUser): Promise<{ accessToken: string; refreshToken: string; user: User; }> {
-    throw new Error('Method not implemented.');
-  }
-  refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; }> {
-    throw new Error('Method not implemented.');
-  }
-  changePassword(id: string, changePasswordDto: SchemaUser): Promise<void> {
-    throw new Error('Method not implemented.');
-  }
 
   private toUserInterface(userDoc: UserDocument): User {
     const userObj = userDoc.toObject();
@@ -67,6 +37,7 @@ export class UsersService implements UserServiceInterface {
     return userObj as User;
   }
 
+  // 1. Registro de Usuario
   async create(createUserDto: CreateUserDto): Promise<User> {
     // Check if user already exists
     const existingUser = await this.userModel
@@ -76,37 +47,145 @@ export class UsersService implements UserServiceInterface {
       throw new ConflictException('Email already registered');
     }
 
-    // Hash password
+    // hash the password
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    // Generate verification code
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate verification code and expiration
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000,
+    ).toString();
     const verificationCodeExpires = new Date();
-    verificationCodeExpires.setMinutes(verificationCodeExpires.getMinutes() + 5);
-    return this.userModel
-      .create({
-        ...createUserDto,
-        password: hashedPassword,
-        isVerified: false,
-        verificationCode,
-        verificationCodeExpires,
-      })
-      .then((userDoc) => {
-        // Send verification email
-        this.emailService.sendVerificationEmail(
-          userDoc.email,
-          userDoc.firstName,
-          verificationCode,
-        );
-        return this.toUserInterface(userDoc);
-      }
-      )
-      .catch((error) => {
-        if (error.code === 11000) {
-          throw new ConflictException('Email already registered');
-        }
-        throw new BadRequestException('Error creating user');
-      }
-      );
+    verificationCodeExpires.setMinutes(
+      verificationCodeExpires.getMinutes() + 5,
+    );
+
+    const newUser = new this.userModel({
+      ...createUserDto,
+      password: hashedPassword,
+      isVerified: false,
+      verificationCode,
+      verificationCodeExpires,
+    });
+
+    await newUser.save();
+
+    await this.emailService.sendVerificationEmail(
+      createUserDto.email,
+      createUserDto.name,
+      verificationCode,
+    );
+
+    return this.toUserInterface(newUser);
+  }
+
+  // 2. Verificación del Email
+  async verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<User> {
+    const { email, verificationCode } = verifyEmailDto;
+
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.verificationCode !== verificationCode) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    if (user.verificationCodeExpires < new Date()) {
+      throw new BadRequestException('Verification code has expired');
+    }
+
+    user.isVerified = true;
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+
+    await user.save();
+
+    return this.toUserInterface(user);
+  }
+
+  // 3. Inicio de Sesión
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ accessToken: string; refreshToken: string; user: User }> {
+    const { email, password } = loginDto;
+
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isVerified) {
+      throw new UnauthorizedException('User is not verified');
+    }
+
+    const payload = { sub: user._id, email: user.email };
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION'),
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION'),
+    });
+
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    user.hashedRefreshToken = hashedRefreshToken;
+    await user.save();
+
+    return {
+      accessToken,
+      refreshToken,
+      user: this.toUserInterface(user),
+    };
+  }
+
+  async refreshToken(
+    refreshTokenDto: RefreshTokenDto,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const { refreshToken } = refreshTokenDto;
+
+    const payload = this.jwtService.verify(refreshToken, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+    });
+
+    const user = await this.userModel.findById(payload.sub).exec();
+    if (!user || !user.hashedRefreshToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const isRefreshTokenValid = await bcrypt.compare(
+      refreshToken,
+      user.hashedRefreshToken,
+    );
+    if (!isRefreshTokenValid) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const newPayload = { sub: user._id, email: user.email };
+    const newAccessToken = this.jwtService.sign(newPayload, {
+      secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION'),
+    });
+
+    const newRefreshToken = this.jwtService.sign(newPayload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION'),
+    });
+
+    const hashedNewRefreshToken = await bcrypt.hash(newRefreshToken, 10);
+    user.hashedRefreshToken = hashedNewRefreshToken;
+    await user.save();
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    };
   }
 }
