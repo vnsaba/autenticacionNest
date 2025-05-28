@@ -46,7 +46,6 @@ export class LoginDto {
   password: string;
 }
 
-
 export class RefreshTokenDto {
   @IsNotEmpty()
   @IsString()
@@ -67,7 +66,7 @@ export class ChangePasswordDto {
 export class VerifyEmailDto {
   @IsNotEmpty()
   @IsEmail()
-  email: string ;
+  email: string;
 
   @IsNotEmpty()
   @IsString()
