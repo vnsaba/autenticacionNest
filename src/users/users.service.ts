@@ -39,6 +39,7 @@ export class UsersService {
 
   // 1. Registro de Usuario
   async create(createUserDto: CreateUserDto): Promise<User> {
+    // Check if user already exists
     const existingUser = await this.userModel
       .findOne({ email: createUserDto.email })
       .exec();
@@ -46,7 +47,10 @@ export class UsersService {
       throw new ConflictException('Email already registered');
     }
 
+    // hash the password
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+
+    // Generate verification code and expiration
     const verificationCode = Math.floor(
       100000 + Math.random() * 900000,
     ).toString();
@@ -67,6 +71,7 @@ export class UsersService {
 
     await this.emailService.sendVerificationEmail(
       createUserDto.email,
+      createUserDto.name,
       verificationCode,
     );
 
