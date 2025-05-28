@@ -15,6 +15,8 @@ import {
   LoginDto,
   VerifyEmailDto,
   RefreshTokenDto,
+  UpdateUserDto,
+  ChangePasswordDto,
 } from './dto/user.dto';
 import { EmailService } from '../email/email.service';
 import { User } from './interfaces/user.interface';
@@ -80,14 +82,14 @@ export class UsersService {
 
   // 2. Verificación del Email
   async verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<User> {
-    const { email, verificationCode } = verifyEmailDto;
+    const { email, code } = verifyEmailDto;
 
     const user = await this.userModel.findOne({ email }).exec();
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    if (user.verificationCode !== verificationCode) {
+    if (user.verificationCode !== code) {
       throw new BadRequestException('Invalid verification code');
     }
 
@@ -110,31 +112,37 @@ export class UsersService {
   ): Promise<{ accessToken: string; refreshToken: string; user: User }> {
     const { email, password } = loginDto;
 
+    // Verifica si el usuario existe
     const user = await this.userModel.findOne({ email }).exec();
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    // Valida la contraseña
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Verifica si el usuario está verificado
     if (!user.isVerified) {
       throw new UnauthorizedException('User is not verified');
     }
 
+    // Genera el access token
     const payload = { sub: user._id, email: user.email };
     const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
       expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION'),
     });
 
+    // Genera el refresh token
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION'),
     });
 
+    // Hashea el refresh token y lo guarda en la base de datos
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
     user.hashedRefreshToken = hashedRefreshToken;
     await user.save();
@@ -187,5 +195,86 @@ export class UsersService {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
     };
+  }
+
+  async findAll(): Promise<User[]> {
+    try {
+      const users = await this.userModel.find().exec();
+      return users.map(this.toUserInterface);
+    } catch (error) {
+      throw new BadRequestException('Error fetching users');
+    }
+  }
+
+  findOne(id: string): Promise<User> {
+    return this.userModel
+      .findById(id)
+      .exec()
+      .then((user) => {
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+        return this.toUserInterface(user);
+      });
+  }
+
+  async findByEmail(email: string): Promise<User> {
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return this.toUserInterface(user);
+  }
+
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        id,
+        { $set: updateUserDto },
+        { new: true, runValidators: true },
+      )
+      .exec();
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.toUserInterface(user);
+  }
+
+  async remove(id: string): Promise<void> {
+    const result = await this.userModel.findByIdAndDelete(id).exec();
+    if (!result) {
+      throw new NotFoundException('User not found');
+    }
+  }
+
+  async verifyUser(id: string): Promise<User> {
+    const user = await this.userModel.findById(id).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.isVerified = true;
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    await user.save();
+    return this.toUserInterface(user);
+  }
+
+  async changePassword(changePasswordDto: ChangePasswordDto): Promise<void> {
+    const { email, currentPassword, newPassword } = changePasswordDto;
+    const user = await this.userModel.findOne({ email }).exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
   }
 }
