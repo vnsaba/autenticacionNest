@@ -40,8 +40,23 @@ export class EmailService {
 
   private getVerificationEmailTemplate(name: string, code: string): string {
     return `
-<!DOCTYPE html>
-...
-`;
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Verificación de correo</title>
+        </head>
+        <body>
+          <p>Hola ${name},</p>
+          <p>Gracias por registrarte en ${this.appName}.</p>
+          <p>Por favor, usa el siguiente código para verificar tu dirección de correo electrónico:</p>
+          <h2>${code}</h2>
+          <p>O haz clic en el siguiente enlace para verificar tu correo:</p>
+          <a href="${this.appUrl}/verify?code=${code}">${this.appUrl}/verify?code=${code}</a>
+          <p>Si no solicitaste esto, puedes ignorar este mensaje.</p>
+          <p>Saludos,<br/>El equipo de ${this.appName}</p>
+        </body>
+      </html>
+    `;
   }
 }
