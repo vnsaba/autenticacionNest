@@ -1,46 +1,112 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-import { User, UserDocument } from './schemas/user.schema';
-import { CreateUserDto } from './dto/create-user-dto';
-import { JwtService } from '@nestjs/jwt';
-import { randomInt } from 'crypto';
+
+import { User as SchemaUser, UserDocument } from './schemas/user.schema';
+import {
+  ChangePasswordDto,
+  CreateUserDto,
+  LoginDto,
+  RefreshTokenDto,
+  UpdateUserDto,
+  VerifyEmailDto,
+} from './dto/user.dto';
+import { EmailService } from '../email/email.service';
+import { User, UserServiceInterface } from './interfaces/user.interface';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements UserServiceInterface {
   constructor(
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(SchemaUser.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
+    private configService: ConfigService,
+    private emailService: EmailService,
   ) {}
-
-  async signup(createUserDto: CreateUserDto) {
-    const { email, password, firstName, lastName } = createUserDto;
-
-    const existingUser = await this.userModel.findOne({ email });
-    if (existingUser) throw new BadRequestException('Email already registered');
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const verificationCode = randomInt(100000, 999999).toString();
-    const verificationCodeExpires = new Date(Date.now() + 5 * 60000); // 5 minutos
-
-    const user = new this.userModel({
-      firstName,
-      lastName,
-      email,
-      password: hashedPassword,
-      isVerified: false,
-      verificationCode,
-      verificationCodeExpires,
-    });
-
-    await user.save();
-
-    // Aquí se debería llamar al servicio de email para enviar el código
-
-    return { message: 'User registered. Please verify your email.' };
+  findAll(): Promise<User[]> {
+    throw new Error('Method not implemented.');
+  }
+  findOne(id: string): Promise<User> {
+    throw new Error('Method not implemented.');
+  }
+  findByEmail(email: string): Promise<User> {
+    throw new Error('Method not implemented.');
+  }
+  update(id: string, updateUserDto: SchemaUser): Promise<User> {
+    throw new Error('Method not implemented.');
+  }
+  remove(id: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  verifyUser(id: string): Promise<User> {
+    throw new Error('Method not implemented.');
+  }
+  login(loginDto: SchemaUser): Promise<{ accessToken: string; refreshToken: string; user: User; }> {
+    throw new Error('Method not implemented.');
+  }
+  refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; }> {
+    throw new Error('Method not implemented.');
+  }
+  changePassword(id: string, changePasswordDto: SchemaUser): Promise<void> {
+    throw new Error('Method not implemented.');
   }
 
-  // Implementar verifyEmail, login, refreshToken, etc...
+  private toUserInterface(userDoc: UserDocument): User {
+    const userObj = userDoc.toObject();
+    userObj.id = userObj._id.toString();
+    delete userObj.password;
+    delete userObj.__v;
+    return userObj as User;
+  }
+
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    // Check if user already exists
+    const existingUser = await this.userModel
+      .findOne({ email: createUserDto.email })
+      .exec();
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+
+    // Generate verification code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationCodeExpires = new Date();
+    verificationCodeExpires.setMinutes(verificationCodeExpires.getMinutes() + 5);
+    return this.userModel
+      .create({
+        ...createUserDto,
+        password: hashedPassword,
+        isVerified: false,
+        verificationCode,
+        verificationCodeExpires,
+      })
+      .then((userDoc) => {
+        // Send verification email
+        this.emailService.sendVerificationEmail(
+          userDoc.email,
+          userDoc.firstName,
+          verificationCode,
+        );
+        return this.toUserInterface(userDoc);
+      }
+      )
+      .catch((error) => {
+        if (error.code === 11000) {
+          throw new ConflictException('Email already registered');
+        }
+        throw new BadRequestException('Error creating user');
+      }
+      );
+  }
 }
